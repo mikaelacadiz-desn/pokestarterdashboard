@@ -20,7 +20,7 @@ let db;
 async function connectDB() {
   if (!db) {
     await client.connect();
-    db = client.db('responses');
+   db = client.db('pokeresponses');
     console.log('Connected to MongoDB');
   }
   return db.collection('responses');
