@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
-const mongoose = require('mongoose');
+const { MongoClient } = require('mongodb');
 const cors = require('cors');
 const path = require('path');
 
@@ -13,13 +13,18 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// Helper to get collection - waits for connection if needed
-const getCollection = async () => {
-  if (mongoose.connection.readyState !== 1) {
-    await mongoose.connect(process.env.MONGODB_URI);
+// MongoDB client
+const client = new MongoClient(process.env.MONGODB_URI);
+let db;
+
+async function connectDB() {
+  if (!db) {
+    await client.connect();
+    db = client.db('responses');
+    console.log('Connected to MongoDB');
   }
-  return mongoose.connection.db.collection('responses');
-};
+  return db.collection('responses');
+}
 
 // Root route - serve index.html
 app.get('/', (req, res) => {
@@ -29,7 +34,7 @@ app.get('/', (req, res) => {
 // Get all responses
 app.get('/api/responses', async (req, res) => {
   try {
-    const col = await getCollection();
+    const col = await connectDB();
     const responses = await col.find({}).toArray();
     res.json(responses);
   } catch (error) {
@@ -41,7 +46,7 @@ app.get('/api/responses', async (req, res) => {
 // Submit a new response
 app.post('/api/responses', async (req, res) => {
   try {
-    const col = await getCollection();
+    const col = await connectDB();
     const response = req.body;
     const result = await col.insertOne(response);
     res.status(201).json({
@@ -57,7 +62,7 @@ app.post('/api/responses', async (req, res) => {
 // Get response statistics (for dashboard)
 app.get('/api/stats', async (req, res) => {
   try {
-    const col = await getCollection();
+    const col = await connectDB();
     const allResponses = await col.find({}).toArray();
 
     const stats = {
@@ -124,7 +129,7 @@ app.get('/api/stats', async (req, res) => {
 // Get map data
 app.get('/api/map-data', async (req, res) => {
   try {
-    const col = await getCollection();
+    const col = await connectDB();
     const allResponses = await col.find({}).toArray();
     console.log(`✓ Found ${allResponses.length} responses in MongoDB`);
 
@@ -183,13 +188,9 @@ app.get('/api/map-data', async (req, res) => {
     allResponses.forEach(response => {
       const country = response.country;
       if (!country) return;
-
       const isoCode = countryIsoCodes[country];
       if (!isoCode) return;
-
-      if (!countryStarters[country]) {
-        countryStarters[country] = {};
-      }
+      if (!countryStarters[country]) countryStarters[country] = {};
 
       [response.fireStarter, response.waterStarter, response.grassStarter].forEach(starter => {
         if (starter) {
@@ -201,19 +202,13 @@ app.get('/api/map-data', async (req, res) => {
     });
 
     const countryData = {};
-
     Object.entries(countryStarters).forEach(([country, starters]) => {
       const isoCode = countryIsoCodes[country];
-
-      const dominantStarter = Object.entries(starters).reduce((a, b) =>
-        b[1] > a[1] ? b : a
-      )[0];
-
+      const dominantStarter = Object.entries(starters).reduce((a, b) => b[1] > a[1] ? b : a)[0];
       const totalCountryVotes = Object.values(starters).reduce((sum, v) => sum + v, 0);
       const type = starterTypes[dominantStarter] || 'fire';
       const starterId = starterIds[dominantStarter] || 4;
       const pct = Math.round((starters[dominantStarter] / totalCountryVotes) * 100);
-
       countryData[isoCode] = {
         type,
         name: country,
@@ -234,11 +229,7 @@ app.get('/api/map-data', async (req, res) => {
         votes
       }));
 
-    res.json({
-      countryData,
-      top10MapData: top10,
-      totalVotes: allResponses.length
-    });
+    res.json({ countryData, top10MapData: top10, totalVotes: allResponses.length });
   } catch (error) {
     console.error('Error calculating map data:', error);
     res.status(500).json({ error: 'Failed to calculate map data' });
@@ -252,7 +243,7 @@ app.listen(PORT, () => {
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-  await mongoose.connection.close();
+  await client.close();
   console.log('MongoDB connection closed');
   process.exit(0);
 });
