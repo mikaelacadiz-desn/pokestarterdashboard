@@ -1,0 +1,16 @@
+{
+  "buildCommand": "npm install",
+  "public": true,
+  "functions": {
+    "api/**/*.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/index.html"
+    }
+  ]
+}
