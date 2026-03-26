@@ -23,7 +23,7 @@ async function connectDB() {
    db = client.db('pokeresponses');
     console.log('Connected to MongoDB');
   }
-  return db.collection('responses');
+  return db.collection('pokeresponses');
 }
 
 // Root route - serve index.html
